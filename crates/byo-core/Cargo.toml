@@ -1,0 +1,14 @@
+[package]
+name = "byo-core"
+description = "Platform-neutral, offline analysis foundation for BYO — Before You Open"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+

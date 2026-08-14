@@ -1,0 +1,21 @@
+[package]
+name = "byo-cli"
+description = "Command-line interface foundation for BYO — Before You Open"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "byo"
+path = "src/main.rs"
+
+[dependencies]
+byo-core = { path = "../byo-core" }
+
+[lints]
+workspace = true
+

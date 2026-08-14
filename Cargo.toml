@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/byo-cli",
+    "crates/byo-core",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0-pre.0"
+edition = "2021"
+rust-version = "1.77.2"
+authors = ["Dennis Hilk"]
+license = "MIT"
+repository = "https://github.com/dennishilk/byo"
+homepage = "https://www.dennishilk.com"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
