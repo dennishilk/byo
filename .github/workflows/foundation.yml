@@ -1,9 +1,7 @@
-name: Foundation checks
+name: Rust checks
 
 on:
   push:
-    branches:
-      - main
   pull_request:
 
 permissions:
@@ -27,6 +25,9 @@ jobs:
 
       - name: Check workspace
         run: cargo check --workspace
+
+      - name: Lint workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test workspace
         run: cargo test --workspace

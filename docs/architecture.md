@@ -1,6 +1,6 @@
 # BYO Architecture
 
-Status: approved v0.1 foundation; analyzers are not implemented yet.
+Status: M1 offline inspection pipeline implemented; PRE-ALPHA.
 
 ## Purpose
 
@@ -35,15 +35,15 @@ The following rules are mandatory:
 
 ### `byo-core`
 
-`byo-core` will contain the reusable analysis domain and, after later approved
-milestones, the offline analyzers. It must remain usable by the CLI and future
-user interfaces without knowing which caller invoked it.
+`byo-core` contains the reusable report domain plus the M1 filename, bounded
+file-header, streaming hash, and URL analyzers. It remains usable by the CLI
+and future user interfaces without knowing which caller invoked it.
 
-The core may eventually accept bounded byte buffers, readers, and explicit
-input metadata. It should not discover files through platform APIs or perform
-user-interface work. Callers are responsible for resolving user-selected paths
-and opening read-only handles. This keeps operating-system behavior outside the
-analysis layer and makes the core deterministic and testable.
+The file analyzer accepts a `Read` implementation plus explicit filename and
+size context. It never discovers a path. The URL analyzer accepts text and uses
+a 64 KiB input ceiling. Callers remain responsible for user-selected paths and
+read-only handles. This keeps operating-system behavior outside the analysis
+layer and makes the core deterministic and testable.
 
 The core must not:
 
@@ -61,9 +61,11 @@ The core must not:
 handling, terminal presentation, exit behavior, and future path selection. It
 must not duplicate analyzer rules.
 
-The foundation CLI currently provides only help and version output. File, URL,
-and QR commands are intentionally deferred. The CLI depends on `byo-core`; the
-core never depends on the CLI.
+The CLI provides help/version plus `file` and `url` commands. It rejects
+directories and unsupported special files, opens regular files read-only,
+checks metadata around analysis, safely renders terminal text, and optionally
+serializes the structured report as JSON. The CLI depends on `byo-core`; the
+core never depends on the CLI. QR remains deferred.
 
 ### Future UI layers
 
@@ -85,35 +87,41 @@ tests. It must not be added to `byo-core` merely as an optional code path.
 
 No `byo-net` crate is created by this milestone.
 
-## Planned report model
+## Report model
 
-The exact Rust types are deferred until the next approved milestone. The model
-will preserve these concepts:
+M1 implements durable Rust types for these concepts:
 
 - **Observation** — a factual property obtained from the supplied input, such
-  as a byte signature, filename component, parsed URL field, or decoded QR
-  payload.
+  as a byte signature, filename component or parsed URL field; a future QR
+  milestone can use the same concept for decoded payload data.
 - **Finding** — a rule-based interpretation that references one or more
   observations and explains why they may matter.
 - **Severity** — exactly `Info`, `Attention`, or `Warning`.
 - **Limitation** — something BYO could not inspect, did not attempt, or cannot
   establish.
-- **Report metadata** — analyzer/schema version plus whether the analysis was
-  local and whether network activity occurred.
+- **Report metadata** — schema/analyzer version, explicit
+  `Complete`/`Partial`/`Failed` state, input kind, local status and network
+  activity.
 
-In v0.1, the network-activity value must always be false. A successful analysis
-means that configured checks completed; it does not mean the input is safe.
+`network_activity` is constructed as `false` in every M1 report. A complete
+analysis means that configured M1 checks completed; it does not mean the input
+is safe. Findings reference the observation IDs that support them. The
+machine-readable schema is PRE-ALPHA and not compatibility-stable yet.
 
 ## Input flow
 
 The intended flow is:
 
-1. A caller receives a user-selected input without launching it.
-2. The caller applies path and top-level size policy and opens data read-only.
-3. The caller passes bounded data and explicit context to `byo-core`.
-4. The core produces observations, findings, errors, and limitations.
-5. The caller renders untrusted values strictly as data, never as markup or a
-   command.
+1. The CLI receives a selected path or URL text without launching it.
+2. For a file, the CLI checks metadata, rejects unsupported types and opens a
+   read-only handle.
+3. The core streams SHA-256 with a fixed 64 KiB buffer and retains at most the
+   first 64 KiB for signature checks. Filename rules consume filename data only.
+4. For a URL, the core enforces its input ceiling and calls the `url` parser;
+   it never performs resolution or navigation.
+5. The core produces observations, findings and limitations in one report.
+6. The CLI escapes every untrusted terminal value or serializes the typed
+   structure with `serde_json`.
 
 Analysis should stream large inputs where possible. Parsers must receive only
 the bytes they need, and every allocation derived from hostile input must have
@@ -125,17 +133,21 @@ Dependencies are part of BYO's attack surface. Each dependency must have a
 specific need, a compatible license, active maintenance, and a reviewed feature
 set.
 
-Foundation policy:
+M1 dependency policy:
 
-- `byo-core` has no third-party dependencies.
-- `byo-cli` depends only on the local `byo-core` crate.
+- `sha2` 0.10 performs reviewed streaming SHA-256; default features are off;
+- `url` 2.5.0 provides WHATWG parsing;
+- `idna` 0.5.0 provides UTS-46/Punycode Unicode display conversion;
+- `serde` derives serialization for the report model;
+- `serde_json` exists only in `byo-cli` for JSON output;
 - no async runtime is present;
 - no HTTP or other network-capable crate is present;
 - unsafe Rust is forbidden in BYO workspace code;
 - generated binaries and `target/` artifacts are not committed.
 
-Later parser dependencies require a separate reviewed change. Default features
-must not be accepted without inspecting what they enable.
+The `url`/`idna` versions are intentionally pinned to a standards-oriented,
+Rust-1.77-compatible combination without the newer ICU dependency expansion.
+Later parser dependencies require a separate reviewed change.
 
 ## Workspace layout
 
@@ -146,6 +158,7 @@ byo/
 │   └── byo-cli/
 ├── docs/
 │   ├── architecture.md
+│   ├── m1-offline-inspection.md
 │   └── threat-model.md
 ├── fixtures/
 └── Cargo.toml
@@ -156,12 +169,10 @@ them. `byo-types` and `byo-net` are deliberately absent.
 
 ## Intentionally deferred
 
-- file, filename, URL, and QR analyzers;
-- report and finding Rust types;
-- parser dependencies and fuzz targets;
+- QR analysis, image decoders and fuzz targets;
 - Tauri and all other graphical user interfaces;
 - platform-specific integrations;
-- archive, document, metadata, and signature parsing;
+- archive/document content parsing, metadata extraction and cryptographic
+  signature verification;
 - HTTP requests, redirect resolution, reputation services, and uploads;
 - packaging, installers, releases, and mobile work.
-

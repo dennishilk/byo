@@ -2,18 +2,23 @@
 
 > **Inspect links, QR codes and files before trusting them.**
 
-BYO is a planned privacy-first, open-source preflight inspector for files, links and QR codes. It is intended to help people understand what something is, where it leads and which properties deserve attention **before** they decide whether to open or trust it.
+BYO is a privacy-first, open-source preflight inspector for files and URLs, with
+QR-code inspection planned for a later milestone. It helps people understand
+what something appears to be and which observable properties deserve attention
+**before** they decide whether to open or trust it.
 
 ## Project status
 
 ```text
 Project status: PRE-ALPHA
 
-Architecture and MVP scope are currently being designed.
+An initial working offline CLI is available for development and testing.
 No production release is available yet.
 ```
 
-Nothing in this repository should currently be treated as a finished or tested security product.
+Nothing in this repository should be treated as a finished security product.
+The current implementation is PRE-ALPHA and cannot determine whether an input
+is safe.
 
 ## The problem
 
@@ -41,31 +46,65 @@ BYO is not intended to become a traditional antivirus product or malware sandbox
 
 BYO can identify properties and warning signs, but it cannot guarantee that a file, link or QR code is safe.
 
-## Planned inspection areas
+## What currently works
 
-The following are design goals, not completed features:
+The PRE-ALPHA CLI currently performs these deterministic offline checks:
 
-- file type and extension comparison;
-- SHA-256 hashing and basic executable detection;
-- suspicious or double filename extensions;
-- URL parsing, normalization and tracking-parameter review;
-- Punycode and internationalized-domain visibility;
-- redirect inspection through an explicit online action;
-- QR-code decoding without opening its contents;
-- a shared, explainable finding model.
+- read-only regular-file inspection with a 64 KiB header window;
+- fixed-buffer streaming SHA-256 hashing;
+- common file-header recognition for PE, ELF, Mach-O, PDF, ZIP, PNG, JPEG,
+  GIF, gzip, 7z, RAR, WebP and script shebangs;
+- filename extension structure, executable-style double extensions and
+  Unicode/control-character visibility;
+- explainable extension-versus-header comparisons, including ZIP-container
+  exceptions for formats such as DOCX;
+- standards-based URL parsing without navigation or network access;
+- credential-presence reporting with password redaction;
+- ASCII/Punycode and Unicode hostname visibility;
+- active/local/custom scheme visibility and conservative tracking-parameter
+  detection;
+- human-readable reports and structured PRE-ALPHA JSON.
 
-More advanced formats, signature validation, archive inspection, metadata extraction and optional reputation services will be evaluated separately and will not be presented as implemented before they are built and tested.
+Observations, findings and limitations are separate report concepts. Findings
+use only `Info`, `Attention` and `Warning`; BYO produces no numeric risk score
+and no absolute verdict.
 
-## Architecture under evaluation
+## Try the development CLI
 
-The current preferred direction is:
+```bash
+cargo run -p byo-cli -- file ./something.pdf
+cargo run -p byo-cli -- url 'https://example.com/path?utm_source=test'
+cargo run -p byo-cli -- --json url 'https://xn--bcher-kva.example/'
+```
 
-- a reusable analysis core written in Rust;
-- a first-class CLI using the same core;
-- a desktop interface evaluated with Tauri 2;
-- narrow native adapters only where operating-system integration requires them.
+`byo file` opens only a selected regular file, read-only. `byo url` parses the
+provided text locally. Neither command launches its input.
 
-The architecture and the exact v0.1 scope are still being assessed. No structure or framework choice is considered final until that plan is reviewed.
+## Current limitations
+
+M1 does not perform full format validation, archive extraction, Office/PDF
+content parsing, signature verification, QR decoding, redirect resolution,
+reachability checks or reputation lookup. Header signatures are evidence of a
+possible type, not proof that an entire file is valid. Robust mixed-script and
+visual-confusable hostname detection is also deferred.
+
+QR decoding, graphical interfaces and online functionality remain design goals,
+not completed features. More advanced formats, signature validation, archive
+inspection, metadata extraction and any optional reputation service require
+separate milestones and threat-model updates.
+
+## Architecture
+
+The current implementation uses:
+
+- a platform-neutral `byo-core` Rust library;
+- a thin `byo-cli` caller for paths, terminal output and JSON.
+
+Tauri, desktop/mobile code and platform integrations are not present in M1.
+Tauri 2 and narrow native adapters remain possible future directions, subject
+to separate review.
+See [the architecture](docs/architecture.md), [threat model](docs/threat-model.md)
+and [M1 scope](docs/m1-offline-inspection.md) for the exact boundaries.
 
 ## Long-term platform direction
 

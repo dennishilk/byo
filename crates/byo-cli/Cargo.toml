@@ -1,6 +1,6 @@
 [package]
 name = "byo-cli"
-description = "Command-line interface foundation for BYO — Before You Open"
+description = "Offline command-line inspector for BYO — Before You Open"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 byo-core = { path = "../byo-core" }
+serde_json = "1.0.149"
 
 [lints]
 workspace = true
-

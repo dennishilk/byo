@@ -1,6 +1,18 @@
 # BYO v0.1 Threat Model
 
-Status: foundation security requirements. No analyzers are implemented yet.
+Status: M1 file, filename and URL controls implemented; PRE-ALPHA.
+
+## M1 implementation status
+
+M1 implements bounded filename, file-header, streaming-hash and URL parsing
+paths. It does not implement deep file parsers, archive extraction, QR image
+decoding, graphical interfaces or network functionality. Requirements below
+remain authoritative: controls marked as future work are not claims of current
+coverage.
+
+Current hard limits include a 4096-byte filename-analysis ceiling, 64 KiB file
+header window, 1 GiB ceiling for any non-streaming file analysis, 64 KiB URL
+input ceiling, 256 inspected URL query pairs and bounded report entries.
 
 ## Security objective
 
@@ -63,8 +75,8 @@ decoded QR destinations, or URL targets.
 
 ## Threats and required controls
 
-The controls below are requirements for later analyzer milestones. Their
-presence in this document does not claim that the analyzers already exist.
+The controls below cover both current M1 analyzers and future milestones. Their
+presence does not claim that deferred analyzers already exist.
 
 ### Hostile filenames
 
@@ -72,7 +84,7 @@ Filenames may contain terminal control sequences, bidirectional text controls,
 newlines, device-like names, separators, reserved names, or bytes that are not
 valid Unicode on the current platform.
 
-Required controls:
+M1 controls:
 
 - treat a filename as data, never a format string, command, or path fragment;
 - preserve enough original representation for accurate reporting;
@@ -86,7 +98,7 @@ Bidirectional overrides, isolates, zero-width characters, variation selectors,
 non-breaking spaces, and confusable characters can make displayed content
 differ from its logical sequence.
 
-Required controls:
+M1 controls:
 
 - detect relevant control and invisible code points;
 - show their code points and positions;
@@ -100,7 +112,7 @@ A file may be truncated, internally inconsistent, valid under multiple format
 interpretations, or designed to trigger parser edge cases. A magic signature is
 evidence, not proof that the full file is valid.
 
-Required controls:
+M1 controls for bounded header detection; deep parsers remain future work:
 
 - parsers return explicit errors rather than positive classifications;
 - record multiple compatible observations when appropriate;
@@ -115,7 +127,7 @@ Extensions may disagree with content or use deceptive compounds such as a
 document-looking component followed by an executable extension. Legitimate
 compound extensions also exist.
 
-Required controls:
+M1 controls:
 
 - report the claimed extension and content-derived observations separately;
 - use explicit rules for dangerous trailing extensions;
@@ -127,7 +139,7 @@ Required controls:
 Very large files can exhaust time, memory, disk cache, or user patience even if
 parsing is otherwise correct.
 
-Initial limit policy for implementation and testing:
+Implemented M1 limit policy:
 
 - inspect metadata before allocating from a declared length;
 - read at most 64 KiB for initial signature/header detection;
@@ -144,7 +156,7 @@ fully analyzed.
 Compressed containers, recursive archives, and crafted decoders can cause high
 expansion ratios, deep nesting, excessive allocations, or CPU exhaustion.
 
-Required controls:
+Future archive controls:
 
 - archive extraction and recursive decompression are outside v0.1;
 - no archive member is written to disk during inspection;
@@ -157,7 +169,7 @@ Required controls:
 URLs may be syntactically invalid, use unexpected schemes, contain ambiguous
 authority syntax, unusual ports, encoded delimiters, or parser differentials.
 
-Required controls:
+M1 controls:
 
 - retain the original input separately from any parser serialization;
 - treat parse failure as an explicit result;
@@ -170,10 +182,11 @@ Required controls:
 Internationalized hostnames can be legitimate while still containing visually
 confusable or mixed-script labels.
 
-Required controls:
+M1 controls:
 
 - show both the ASCII/Punycode and Unicode representations when available;
-- identify mixed-script or confusable properties as explainable findings;
+- report that robust mixed-script and visual-confusable detection is not
+  implemented in M1;
 - preserve parser errors and conversion limitations;
 - avoid blanket warnings for all internationalized domains;
 - never claim that visual similarity proves impersonation.
@@ -183,7 +196,7 @@ Required controls:
 URLs may contain usernames and passwords in their authority component. Showing,
 copying, logging, or later transmitting them can disclose secrets.
 
-Required controls:
+M1 controls:
 
 - report the presence of embedded credentials;
 - redact password material in ordinary presentation and logs;
@@ -197,7 +210,7 @@ QR source images can exploit decoder bugs or declare extreme dimensions. A
 decoded payload can contain control characters, a dangerous URL, shell-looking
 text, or arbitrary binary data.
 
-Initial limit policy for implementation and testing:
+Required limit policy for the deferred QR milestone:
 
 - encoded QR image input: at most 32 MiB;
 - maximum width: 8,192 pixels;
@@ -207,14 +220,14 @@ Initial limit policy for implementation and testing:
 - dimensions and pixel multiplication use checked arithmetic;
 - decoder buffers are bounded independently of encoded file size.
 
-Required controls:
+Future QR controls:
 
 - inspect image metadata and dimensions before full decode where supported;
 - configure strict decoder limits and reject unsupported limit enforcement;
 - render decoded payloads as escaped data;
 - never open, execute, or automatically copy a decoded payload;
-- pass URL-like payloads only to the offline URL analyzer after that analyzer is
-  implemented;
+- pass URL-like payloads only to the existing offline URL analyzer in a later
+  QR milestone;
 - report undecodable, multiple, truncated, and binary payloads explicitly.
 
 ### Parser panics
@@ -222,9 +235,10 @@ Required controls:
 Malformed input may reach assumptions that produce a panic in BYO or a parser
 dependency.
 
-Required controls:
+M1 controls, with fuzzing still deferred:
 
-- analysis APIs return `Result`-style errors;
+- analyzer failures become explicit `Partial` or `Failed` reports rather than
+  positive classifications;
 - avoid `unwrap`, `expect`, unchecked indexing, and unchecked arithmetic on
   hostile-input paths;
 - add regression fixtures for every discovered panic;
@@ -240,7 +254,7 @@ panics, denial of service, or unsafe code inside dependencies.
 Hostile lengths, dimensions, counts, or recursive structures may cause large
 allocations without requiring a conventional parser bug.
 
-Required controls:
+M1 controls:
 
 - every allocation derived from input has an explicit upper bound;
 - prefer streaming and fixed-size buffers;
@@ -255,7 +269,7 @@ Paths may reference symlinks, network filesystems, special files, devices,
 changing files, or names with platform-specific semantics. Metadata can change
 between checks and reads.
 
-Required controls:
+M1 caller controls:
 
 - open only user-selected inputs and use read-only access;
 - reject directories and unsupported special-file types by default;
@@ -270,7 +284,7 @@ Required controls:
 The most direct failure would be invoking the subject while attempting to
 inspect it.
 
-Required controls:
+M1 controls:
 
 - no shell, process, opener, preview-handler, or sidecar dependency;
 - no “open anyway” action in v0.1;
@@ -294,14 +308,10 @@ guarantee. The report model must therefore:
 
 ## Deferred security work
 
-The following work is intentionally deferred with the associated analyzers:
+The following work is intentionally deferred:
 
-- concrete report and error types;
-- parser selection and dependency review;
-- malformed-input fixture corpus;
 - property tests and fuzz targets;
 - platform-specific signature APIs;
 - archive and document parsing;
 - UI capability configuration;
 - a separate network threat model.
-
