@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-pub const REPORT_SCHEMA_VERSION: &str = "0.1.0-pre.1";
+pub const REPORT_SCHEMA_VERSION: &str = "0.1.0-pre.2";
 pub const ANALYZER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
@@ -46,6 +46,7 @@ impl AnalysisState {
 pub enum InputKind {
     File,
     Url,
+    QrImage,
 }
 
 impl InputKind {
@@ -53,6 +54,7 @@ impl InputKind {
         match self {
             Self::File => "file",
             Self::Url => "url",
+            Self::QrImage => "QR image",
         }
     }
 }
@@ -176,6 +178,67 @@ pub struct Limitation {
     pub explanation: String,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QrPayloadKind {
+    Text,
+    Url,
+    EmailUri,
+    TelephoneUri,
+    SmsUri,
+    WifiConfiguration,
+    CustomScheme,
+    Binary,
+}
+
+impl QrPayloadKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "ordinary text",
+            Self::Url => "URL",
+            Self::EmailUri => "email URI",
+            Self::TelephoneUri => "telephone URI",
+            Self::SmsUri => "SMS URI",
+            Self::WifiConfiguration => "Wi-Fi configuration",
+            Self::CustomScheme => "custom-scheme URI",
+            Self::Binary => "binary data",
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct WifiPayload {
+    pub authentication_type: Option<String>,
+    pub ssid: Option<String>,
+    pub password_present: bool,
+    pub hidden: Option<bool>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct QrPayload {
+    pub byte_length: u64,
+    pub valid_utf8: bool,
+    pub kind: QrPayloadKind,
+    pub display: String,
+    pub display_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hexadecimal: Option<String>,
+    pub hexadecimal_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wifi: Option<WifiPayload>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct QrCodeReport {
+    pub index: u32,
+    pub decode_succeeded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<QrPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url_analysis: Option<Box<Report>>,
+    pub limitations: Vec<Limitation>,
+}
+
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct Report {
     pub metadata: ReportMetadata,
@@ -183,6 +246,8 @@ pub struct Report {
     pub observations: Vec<Observation>,
     pub findings: Vec<Finding>,
     pub limitations: Vec<Limitation>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub qr_codes: Vec<QrCodeReport>,
     #[serde(skip_serializing)]
     next_observation_number: u32,
 }
@@ -195,6 +260,7 @@ impl Report {
             observations: Vec::new(),
             findings: Vec::new(),
             limitations: Vec::new(),
+            qr_codes: Vec::new(),
             next_observation_number: 1,
         }
     }

@@ -5,6 +5,10 @@ temporary directories. The synthetic inputs cover common header signatures,
 truncation, mismatches and CLI file handling without storing executable
 programs or live malware.
 
+M2 adds the documented harmless raster corpus in [`qr/`](qr/README.md). Large
+dimension headers and oversized sparse sources are generated during tests, not
+stored in Git.
+
 Future checked-in fixtures must be safe to store publicly, must not contain live
 malware or secrets, and must document whether they are valid, malformed,
 truncated or synthetic.

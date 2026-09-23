@@ -2,8 +2,8 @@
 
 > **Inspect links, QR codes and files before trusting them.**
 
-BYO is a privacy-first, open-source preflight inspector for files and URLs, with
-QR-code inspection planned for a later milestone. It helps people understand
+BYO is a privacy-first, open-source preflight inspector for files, URLs and QR
+images. It helps people understand
 what something appears to be and which observable properties deserve attention
 **before** they decide whether to open or trust it.
 
@@ -63,6 +63,10 @@ The PRE-ALPHA CLI currently performs these deterministic offline checks:
 - ASCII/Punycode and Unicode hostname visibility;
 - active/local/custom scheme visibility and conservative tracking-parameter
   detection;
+- bounded, in-process QR detection from PNG and JPEG images;
+- raw QR payload handling for text, binary data, URLs and basic `WIFI:`
+  configurations, with multiple-code support and secret redaction;
+- reuse of the same offline URL analyzer for URL-like QR payloads;
 - human-readable reports and structured PRE-ALPHA JSON.
 
 Observations, findings and limitations are separate report concepts. Findings
@@ -75,23 +79,29 @@ and no absolute verdict.
 cargo run -p byo-cli -- file ./something.pdf
 cargo run -p byo-cli -- url 'https://example.com/path?utm_source=test'
 cargo run -p byo-cli -- --json url 'https://xn--bcher-kva.example/'
+cargo run -p byo-cli -- qr ./qr.png
+cargo run -p byo-cli -- --json qr ./photo.jpg
 ```
 
 `byo file` opens only a selected regular file, read-only. `byo url` parses the
-provided text locally. Neither command launches its input.
+provided text locally. `byo qr` reads only PNG or JPEG bytes, enforces image and
+payload limits, and never opens the decoded destination. None of these commands
+launches or transmits its input.
 
 ## Current limitations
 
-M1 does not perform full format validation, archive extraction, Office/PDF
-content parsing, signature verification, QR decoding, redirect resolution,
-reachability checks or reputation lookup. Header signatures are evidence of a
-possible type, not proof that an entire file is valid. Robust mixed-script and
+BYO does not perform full format validation, archive extraction, Office/PDF
+content parsing, signature verification, redirect resolution, reachability
+checks or reputation lookup. Header signatures are evidence of a possible type,
+not proof that an entire file is valid. Robust mixed-script and
 visual-confusable hostname detection is also deferred.
 
-QR decoding, graphical interfaces and online functionality remain design goals,
-not completed features. More advanced formats, signature validation, archive
-inspection, metadata extraction and any optional reputation service require
-separate milestones and threat-model updates.
+M2 QR inspection supports only the first PNG/JPEG raster image, processes at
+most seven decoder candidates, accepts at most 8 KiB per decoded payload, and
+does not implement camera capture, QR generation, structured append, ECI text
+conversion or broad contact/business-card parsing. A decoded value is an
+observation, never a safety verdict. Graphical interfaces and online
+functionality remain future work.
 
 ## Architecture
 
@@ -100,11 +110,12 @@ The current implementation uses:
 - a platform-neutral `byo-core` Rust library;
 - a thin `byo-cli` caller for paths, terminal output and JSON.
 
-Tauri, desktop/mobile code and platform integrations are not present in M1.
+Tauri, desktop/mobile code and platform integrations are not present in M2.
 Tauri 2 and narrow native adapters remain possible future directions, subject
 to separate review.
-See [the architecture](docs/architecture.md), [threat model](docs/threat-model.md)
-and [M1 scope](docs/m1-offline-inspection.md) for the exact boundaries.
+See [the architecture](docs/architecture.md), [threat model](docs/threat-model.md),
+[M1 scope](docs/m1-offline-inspection.md) and
+[M2 QR scope](docs/m2-qr-inspection.md) for the exact boundaries.
 
 ## Long-term platform direction
 

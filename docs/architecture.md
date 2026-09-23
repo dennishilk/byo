@@ -1,6 +1,6 @@
 # BYO Architecture
 
-Status: M1 offline inspection pipeline implemented; PRE-ALPHA.
+Status: M2 bounded offline QR inspection implemented; PRE-ALPHA.
 
 ## Purpose
 
@@ -35,15 +35,17 @@ The following rules are mandatory:
 
 ### `byo-core`
 
-`byo-core` contains the reusable report domain plus the M1 filename, bounded
-file-header, streaming hash, and URL analyzers. It remains usable by the CLI
+`byo-core` contains the reusable report domain plus the filename, bounded
+file-header, streaming hash, URL and QR analyzers. It remains usable by the CLI
 and future user interfaces without knowing which caller invoked it.
 
 The file analyzer accepts a `Read` implementation plus explicit filename and
-size context. It never discovers a path. The URL analyzer accepts text and uses
-a 64 KiB input ceiling. Callers remain responsible for user-selected paths and
-read-only handles. This keeps operating-system behavior outside the analysis
-layer and makes the core deterministic and testable.
+size context. The URL analyzer accepts text and uses a 64 KiB input ceiling.
+The QR analyzer accepts an already bounded encoded byte slice plus explicit
+filename and size context. None discovers a path. Callers remain responsible
+for user-selected paths, metadata checks and read-only handles. This keeps
+operating-system behavior outside the analysis layer and makes the core
+deterministic and testable.
 
 The core must not:
 
@@ -61,11 +63,11 @@ The core must not:
 handling, terminal presentation, exit behavior, and future path selection. It
 must not duplicate analyzer rules.
 
-The CLI provides help/version plus `file` and `url` commands. It rejects
+The CLI provides help/version plus `file`, `url` and `qr` commands. It rejects
 directories and unsupported special files, opens regular files read-only,
-checks metadata around analysis, safely renders terminal text, and optionally
-serializes the structured report as JSON. The CLI depends on `byo-core`; the
-core never depends on the CLI. QR remains deferred.
+checks metadata around analysis, bounds QR image reads at 32 MiB, safely renders
+terminal text, and optionally serializes the structured report as JSON. The CLI
+depends on `byo-core`; the core never depends on the CLI.
 
 ### Future UI layers
 
@@ -89,11 +91,11 @@ No `byo-net` crate is created by this milestone.
 
 ## Report model
 
-M1 implements durable Rust types for these concepts:
+The implemented milestones use durable Rust types for these concepts:
 
 - **Observation** — a factual property obtained from the supplied input, such
-  as a byte signature, filename component or parsed URL field; a future QR
-  milestone can use the same concept for decoded payload data.
+  as a byte signature, filename component, parsed URL field, image dimension or
+  decoded QR payload property.
 - **Finding** — a rule-based interpretation that references one or more
   observations and explains why they may matter.
 - **Severity** — exactly `Info`, `Attention`, or `Warning`.
@@ -103,10 +105,17 @@ M1 implements durable Rust types for these concepts:
   `Complete`/`Partial`/`Failed` state, input kind, local status and network
   activity.
 
-`network_activity` is constructed as `false` in every M1 report. A complete
-analysis means that configured M1 checks completed; it does not mean the input
-is safe. Findings reference the observation IDs that support them. The
-machine-readable schema is PRE-ALPHA and not compatibility-stable yet.
+`network_activity` is constructed as `false` in every report, including nested
+URL reports derived from QR payloads. A complete analysis means that the
+configured checks completed; it does not mean the input is safe. Findings
+reference the observation IDs that support them. The machine-readable schema is
+PRE-ALPHA and not compatibility-stable yet.
+
+QR reports add only two typed concepts to the existing model: a bounded list of
+per-code reports and a payload record that preserves byte length, UTF-8 status,
+descriptive kind, safe display and optional bounded hexadecimal/Wi-Fi fields.
+URL-like payloads contain a normal nested URL `Report`; there is no second URL
+rule engine.
 
 ## Input flow
 
@@ -119,8 +128,13 @@ The intended flow is:
    first 64 KiB for signature checks. Filename rules consume filename data only.
 4. For a URL, the core enforces its input ceiling and calls the `url` parser;
    it never performs resolution or navigation.
-5. The core produces observations, findings and limitations in one report.
-6. The CLI escapes every untrusted terminal value or serializes the typed
+5. For a QR image, the CLI rejects non-regular or encoded inputs above 32 MiB,
+   then passes bytes to the core. The core identifies only PNG/JPEG by magic,
+   reads dimensions under decoder limits, checks dimensions and pixel count,
+   decodes to grayscale in-process, and extracts a bounded candidate list.
+6. URL-like QR text goes through the same URL analyzer used by `byo url`.
+7. The core produces observations, findings and limitations in one report.
+8. The CLI escapes every untrusted terminal value or serializes the typed
    structure with `serde_json`.
 
 Analysis should stream large inputs where possible. Parsers must receive only
@@ -133,11 +147,15 @@ Dependencies are part of BYO's attack surface. Each dependency must have a
 specific need, a compatible license, active maintenance, and a reviewed feature
 set.
 
-M1 dependency policy:
+Current production dependency policy:
 
 - `sha2` 0.10 performs reviewed streaming SHA-256; default features are off;
 - `url` 2.5.0 provides WHATWG parsing;
 - `idna` 0.5.0 provides UTS-46/Punycode Unicode display conversion;
+- `image` 0.25.6 has default features disabled and enables only its PNG and
+  JPEG decoders; its dimension/allocation limits supplement BYO's checks;
+- `quircs` 0.10.3 performs in-process QR detection and returns raw payload
+  bytes rather than requiring UTF-8;
 - `serde` derives serialization for the report model;
 - `serde_json` exists only in `byo-cli` for JSON output;
 - no async runtime is present;
@@ -145,9 +163,9 @@ M1 dependency policy:
 - unsafe Rust is forbidden in BYO workspace code;
 - generated binaries and `target/` artifacts are not committed.
 
-The `url`/`idna` versions are intentionally pinned to a standards-oriented,
-Rust-1.77-compatible combination without the newer ICU dependency expansion.
-Later parser dependencies require a separate reviewed change.
+The `url`/`idna`, `image`, and `quircs` versions are intentionally pinned to
+versions compatible with Rust 1.77.2. Only the two raster features required by
+M2 are enabled. Later parser dependencies require a separate reviewed change.
 
 ## Workspace layout
 
@@ -159,6 +177,7 @@ byo/
 ├── docs/
 │   ├── architecture.md
 │   ├── m1-offline-inspection.md
+│   ├── m2-qr-inspection.md
 │   └── threat-model.md
 ├── fixtures/
 └── Cargo.toml
@@ -169,7 +188,8 @@ them. `byo-types` and `byo-net` are deliberately absent.
 
 ## Intentionally deferred
 
-- QR analysis, image decoders and fuzz targets;
+- fuzz targets and stronger parser isolation;
+- camera/live scanning, QR generation and structured-append support;
 - Tauri and all other graphical user interfaces;
 - platform-specific integrations;
 - archive/document content parsing, metadata extraction and cryptographic

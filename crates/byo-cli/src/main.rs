@@ -2,13 +2,14 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::{env, process::ExitCode};
 
-use byo_cli::{inspect_file_path, render_human, render_json, report_exit_code};
+use byo_cli::{inspect_file_path, inspect_qr_path, render_human, render_json, report_exit_code};
 use byo_core::{inspect_url, PRODUCT_NAME, PROJECT_STATUS};
 
 enum CliCommand {
     Help,
     Version,
     File { path: PathBuf, json: bool },
+    Qr { path: PathBuf, json: bool },
     Url { input: String, json: bool },
 }
 
@@ -19,12 +20,14 @@ Project status: {PROJECT_STATUS}
 
 Usage:
   byo [--json] file <PATH>
+  byo [--json] qr <PATH>
   byo [--json] url <URL>
   byo --help
   byo --version
 
 Commands:
   file <PATH>      Inspect a regular file read-only and offline
+  qr <PATH>        Decode QR codes from a PNG or JPEG locally and offline
   url <URL>        Parse and inspect a URL without network activity
 
 Options:
@@ -71,6 +74,16 @@ fn parse_args() -> Result<CliCommand, String> {
                 .map_err(|_| "the URL argument must be valid Unicode".to_owned())?;
             json = parse_trailing_json(arguments, json)?;
             return Ok(CliCommand::Url { input, json });
+        }
+        if argument == "qr" {
+            let Some(path) = arguments.next() else {
+                return Err("the qr command requires one PATH".to_owned());
+            };
+            json = parse_trailing_json(arguments, json)?;
+            return Ok(CliCommand::Qr {
+                path: PathBuf::from(path),
+                json,
+            });
         }
 
         return Err(format!(
@@ -125,6 +138,11 @@ fn run() -> Result<u8, String> {
         }
         CliCommand::Url { input, json } => {
             let report = inspect_url(&input);
+            print_report(&report, json)?;
+            Ok(report_exit_code(&report))
+        }
+        CliCommand::Qr { path, json } => {
+            let report = inspect_qr_path(&path);
             print_report(&report, json)?;
             Ok(report_exit_code(&report))
         }

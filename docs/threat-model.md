@@ -1,18 +1,20 @@
 # BYO v0.1 Threat Model
 
-Status: M1 file, filename and URL controls implemented; PRE-ALPHA.
+Status: M2 file, filename, URL and bounded QR controls implemented; PRE-ALPHA.
 
-## M1 implementation status
+## Implementation status
 
 M1 implements bounded filename, file-header, streaming-hash and URL parsing
-paths. It does not implement deep file parsers, archive extraction, QR image
-decoding, graphical interfaces or network functionality. Requirements below
-remain authoritative: controls marked as future work are not claims of current
-coverage.
+paths. M2 adds bounded in-process PNG/JPEG decoding and QR payload inspection.
+BYO still does not implement deep file parsers, archive extraction, graphical
+interfaces or network functionality. Requirements below remain authoritative:
+controls marked as future work are not claims of current coverage.
 
 Current hard limits include a 4096-byte filename-analysis ceiling, 64 KiB file
 header window, 1 GiB ceiling for any non-streaming file analysis, 64 KiB URL
-input ceiling, 256 inspected URL query pairs and bounded report entries.
+input ceiling, 256 inspected URL query pairs, a 32 MiB encoded QR image ceiling,
+8,192-pixel width/height ceilings, 32,000,000 decoded pixels, 8 KiB accepted per
+QR payload, seven processed QR candidates and bounded report entries.
 
 ## Security objective
 
@@ -210,7 +212,7 @@ QR source images can exploit decoder bugs or declare extreme dimensions. A
 decoded payload can contain control characters, a dangerous URL, shell-looking
 text, or arbitrary binary data.
 
-Required limit policy for the deferred QR milestone:
+Implemented M2 limit policy:
 
 - encoded QR image input: at most 32 MiB;
 - maximum width: 8,192 pixels;
@@ -220,22 +222,36 @@ Required limit policy for the deferred QR milestone:
 - dimensions and pixel multiplication use checked arithmetic;
 - decoder buffers are bounded independently of encoded file size.
 
-Future QR controls:
+Implemented M2 controls:
 
-- inspect image metadata and dimensions before full decode where supported;
-- configure strict decoder limits and reject unsupported limit enforcement;
+- accept only PNG and JPEG identified by encoded-byte magic;
+- inspect dimensions before full raster decode;
+- configure an independent 256 MiB decoder-allocation ceiling in addition to
+  BYO's dimension and pixel limits;
 - render decoded payloads as escaped data;
 - never open, execute, or automatically copy a decoded payload;
-- pass URL-like payloads only to the existing offline URL analyzer in a later
-  QR milestone;
+- pass URL-like payloads only to the existing offline URL analyzer;
 - report undecodable, multiple, truncated, and binary payloads explicitly.
+
+The CLI rejects oversized files from metadata before reading, then reads through
+a 32 MiB plus one-byte ceiling to catch growth. The core repeats the encoded
+size check, validates dimensions with checked multiplication before decode, and
+checks the final grayscale buffer length. QR dependency panics are caught at the
+decoder boundary and converted into a failed report. This is resilience, not a
+sandbox: process aborts, excessive CPU use and vulnerabilities inside a codec
+remain possible.
+
+`quircs` maintains an internal inventory of at most eight candidate grids. BYO
+processes at most seven so it can produce an explicit partial-result limitation
+when the decoder yields more than the application bound. In images containing
+more than eight plausible codes, the exact total may therefore be unknown.
 
 ### Parser panics
 
 Malformed input may reach assumptions that produce a panic in BYO or a parser
 dependency.
 
-M1 controls, with fuzzing still deferred:
+Implemented controls, with fuzzing still deferred:
 
 - analyzer failures become explicit `Partial` or `Failed` reports rather than
   positive classifications;
